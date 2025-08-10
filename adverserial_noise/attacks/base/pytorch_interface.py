@@ -5,6 +5,35 @@ from .backend_interface import BackendInterface
 
 
 class PyTorchBackend(BackendInterface):
+    """
+    PyTorch implementation of the BackendInterface.
+
+    This class provides PyTorch-specific implementations of all backend operations
+    required for adversarial attacks. It handles tensor operations, gradient
+    computation, model management, and device operations using PyTorch's API.
+
+    The implementation is optimized for PyTorch models and tensors, providing
+    efficient operations while maintaining the same interface contract as the
+    abstract BackendInterface.
+
+    Features:
+        - Full PyTorch tensor support
+        - Automatic device handling (CPU/GPU)
+        - Efficient gradient operations
+        - Model state management
+        - Error handling with PyTorch-specific exceptions
+
+    Example:
+        >>> backend = PyTorchBackend()
+        >>> tensor = backend.to_tensor([1, 2, 3])
+        >>> tensor = backend.requires_grad(tensor)
+        >>> device = backend.device(tensor)
+
+    Note:
+        This backend requires PyTorch to be installed. All operations are
+        performed using PyTorch tensors and models.
+    """
+
     def to_tensor(
         self, data: Union[np.ndarray[Any, Any], list[Any], tuple[Any, ...], float, int]
     ) -> torch.Tensor:

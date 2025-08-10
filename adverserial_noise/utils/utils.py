@@ -24,14 +24,31 @@ STD = np.array([0.229, 0.224, 0.225])
 
 def read_image(image_path: str) -> Image.Image:
     """
-    Read image as numpy array using OpenCV.
+    Read image from file path using PIL (Python Imaging Library).
+
+    This function loads an image from the specified file path and returns
+    a PIL Image object. It supports various image formats including JPEG,
+    PNG, BMP, TIFF, and others supported by PIL.
 
     Args:
-        image_path: Path to image file.
-        imread_flag: OpenCV flag for image reading mode.
+        image_path (str): Path to the image file. Can be relative or absolute.
 
     Returns:
-        Numpy image in BGR format.
+        PIL.Image.Image: Loaded image object.
+
+    Raises:
+        FileNotFoundError: If the image file cannot be found or opened.
+        OSError: If the image file is corrupted or in an unsupported format.
+
+    Example:
+        >>> image = read_image("path/to/image.jpg")
+        >>> print(f"Image size: {image.size}")
+        >>> print(f"Image mode: {image.mode}")
+
+    Note:
+        This function uses PIL instead of OpenCV for better cross-platform
+        compatibility and format support. The returned image is in RGB format
+        by default.
     """
     image = Image.open(image_path)
     if image is None:
@@ -47,13 +64,45 @@ def image_to_tensor(
     """
     Convert image to backend-specific tensor normalized for ImageNet.
 
+    This function preprocesses an input image for use with pre-trained models
+    by resizing to the specified dimensions and applying ImageNet normalization.
+    It supports both PIL Images and numpy arrays as input.
+
+    The preprocessing pipeline includes:
+    1. Resizing to the target dimensions
+    2. Converting to tensor format
+    3. Applying ImageNet normalization (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    4. Adding batch dimension
+
     Args:
-        image: Input image as np.ndarray (BGR) or PIL Image.
-        backend_name: 'pytorch' or 'tensorflow'.
-        size: Resize dimensions.
+        image (Union[np.ndarray, PIL.Image.Image]): Input image. Can be:
+            - PIL.Image.Image: Image object
+            - numpy.ndarray: Image array (will be converted to RGB if in BGR format)
+        backend (str): Target backend framework. Currently supports:
+            - 'pytorch': Returns PyTorch tensor
+            - 'tensorflow': Returns TensorFlow tensor (if available)
+        size (Tuple[int, int], optional): Target dimensions (height, width).
+                                         Defaults to (224, 224) for ImageNet models.
 
     Returns:
-        Tensor compatible with backend.
+        Union[torch.Tensor, tf.Tensor]: Preprocessed tensor with shape (1, C, H, W)
+                                       for PyTorch or (1, H, W, C) for TensorFlow.
+
+    Raises:
+        ValueError: If unsupported backend is specified.
+        RuntimeError: If TensorFlow backend is requested but not available.
+
+    Example:
+        >>> image = read_image("cat.jpg")
+        >>> tensor = image_to_tensor(image, backend="pytorch", size=(256, 256))
+        >>> print(f"Tensor shape: {tensor.shape}")
+        >>> print(f"Tensor dtype: {tensor.dtype}")
+
+    Note:
+        - The returned tensor includes a batch dimension (batch size = 1)
+        - ImageNet normalization is applied by default
+        - For numpy arrays, BGR to RGB conversion is performed automatically
+        - The function assumes RGB input images
     """
     if isinstance(image, np.ndarray):
         # Convert BGR to RGB for consistency
@@ -115,17 +164,54 @@ def visualize_attack(
     backend: str = BackendTypes.PYTORCH,
 ) -> None:
     """
-    Visualize original image, adversarial image, noise, predicted probabilities, and class labels.
+    Visualize the results of an adversarial attack with comprehensive plots.
+
+    This function creates a 4-panel visualization showing:
+    1. Original image with true class label
+    2. Adversarial noise/perturbation
+    3. Adversarial image with predicted class
+    4. Top-5 predicted class probabilities
+
+    The visualization is useful for:
+    - Comparing original vs. adversarial examples
+    - Analyzing the perturbation patterns
+    - Understanding model confidence changes
+    - Debugging attack effectiveness
 
     Args:
-        original: Original input tensor (batch size 1).
-        adversarial: Adversarial tensor (batch size 1).
-        noise: Noise tensor (batch size 1).
-        probs: 1D tensor/array of predicted probabilities.
-        predicted_class: Predicted class label string.
-        true_class: (Optional) true class label string.
-        class_names: (Optional) list of class names.
-        backend_name: Backend string ('pytorch' or 'tensorflow').
+        original (Union[torch.Tensor, tf.Tensor]): Original input tensor with batch dimension.
+        adversarial (Union[torch.Tensor, tf.Tensor]): Adversarial tensor with batch dimension.
+        noise (Union[torch.Tensor, tf.Tensor]): Perturbation/noise tensor with batch dimension.
+        probs (np.ndarray): 1D array of predicted class probabilities.
+        predicted_class (str): Class label predicted for the adversarial example.
+        true_class (Optional[str], optional): True class label of the original image.
+                                            Defaults to None.
+        class_names (Optional[List[str]], optional): List of all class names for
+                                                   probability visualization. If None,
+                                                   indices are used. Defaults to None.
+        backend (str, optional): Backend framework used ('pytorch' or 'tensorflow').
+                                Defaults to BackendTypes.PYTORCH.
+
+    Returns:
+        None: Displays the visualization plot.
+
+    Example:
+        >>> visualize_attack(
+        >>>     original=original_tensor,
+        >>>     adversarial=adversarial_tensor,
+        >>>     noise=noise_tensor,
+        >>>     probs=probabilities,
+        >>>     predicted_class="gibbon",
+        >>>     true_class="giant panda",
+        >>>     class_names=imagenet_classes
+        >>> )
+
+    Note:
+        - All input tensors should have batch dimension (will be squeezed automatically)
+        - Images are automatically denormalized from ImageNet normalization
+        - Noise is scaled to [0,1] range for better visualization
+        - The function uses matplotlib for plotting and displays the result
+        - Top-5 predictions are shown by default
     """
 
     orig_img = tensor_to_numpy(original, backend)

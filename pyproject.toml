@@ -27,7 +27,7 @@ packages = ["adverserial_noise"]
 
 [tool.mypy]
 strict = true
-files = ["adverserial_noise", "test"]
+files = ["adverserial_noise"]
 
 [tool.ruff]
 target-version = "py310"
