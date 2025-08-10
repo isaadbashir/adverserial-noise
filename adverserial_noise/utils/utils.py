@@ -1,0 +1,219 @@
+# utils.py
+
+from typing import Optional, Tuple, Union, List, Any
+
+import numpy as np
+from PIL import Image
+import cv2
+
+from adverserial_noise.attacks.attack import BackendTypes
+import matplotlib.pyplot as plt
+
+import torch
+from torchvision import transforms
+import torch.nn.functional as F
+
+try:
+    import tensorflow as tf
+except ImportError:
+    tf = None
+
+MEAN = np.array([0.485, 0.456, 0.406])
+STD = np.array([0.229, 0.224, 0.225])
+
+
+def read_image(image_path: str) -> Image.Image:
+    """
+    Read image as numpy array using OpenCV.
+
+    Args:
+        image_path: Path to image file.
+        imread_flag: OpenCV flag for image reading mode.
+
+    Returns:
+        Numpy image in BGR format.
+    """
+    image = Image.open(image_path)
+    if image is None:
+        raise FileNotFoundError(f"Failed to load image {image_path}")
+    return image
+
+
+def image_to_tensor(
+    image: Union[np.ndarray[Any, Any], Image.Image],
+    backend: str,
+    size: Tuple[int, int] = (224, 224),
+) -> Union[torch.Tensor, tf.Tensor]:
+    """
+    Convert image to backend-specific tensor normalized for ImageNet.
+
+    Args:
+        image: Input image as np.ndarray (BGR) or PIL Image.
+        backend_name: 'pytorch' or 'tensorflow'.
+        size: Resize dimensions.
+
+    Returns:
+        Tensor compatible with backend.
+    """
+    if isinstance(image, np.ndarray):
+        # Convert BGR to RGB for consistency
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(image)
+
+    if backend == BackendTypes.PYTORCH:
+        transform = transforms.Compose(
+            [
+                transforms.Resize(size),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=MEAN, std=STD),
+            ]
+        )
+        tensor = transform(image).unsqueeze(0)  # add batch
+        return tensor
+
+    elif backend == BackendTypes.TENSORFLOW:
+        # Convert PIL to TF tensor (H,W,C), float32 [0,255]
+        img = tf.keras.preprocessing.image.img_to_array(image)
+
+        # Resize using TF
+        img = tf.image.resize(img, size)
+
+        # Scale pixel values to [0,1]
+        img = img / 255.0
+
+        # Normalize using ImageNet mean/std
+        mean = tf.constant(MEAN, shape=(1, 1, 3), dtype=tf.float32)
+        std = tf.constant(STD, shape=(1, 1, 3), dtype=tf.float32)
+        img = (img - mean) / std
+
+        # Add batch dimension: (1, H, W, C)
+        img = tf.expand_dims(img, axis=0)
+
+        return img
+
+    else:
+        raise ValueError(f"Unsupported backend: {backend}")
+
+
+def tensor_to_numpy(
+    tensor: Union[torch.Tensor, tf.Tensor], backend: str
+) -> np.ndarray[Any, Any]:
+    """
+    Convert a batch tensor (1, C, H, W) or (1, H, W, C) to a numpy image (H, W, C) in [0,1].
+
+    Args:
+        tensor: Input tensor with batch dimension.
+        backend: Backend string ('pytorch' or 'tensorflow').
+
+    Returns:
+        numpy.ndarray: Image array (H, W, 3) normalized to [0,1].
+    """
+    if backend == BackendTypes.PYTORCH:
+        img = tensor.squeeze(0).detach().cpu()
+        img = img.numpy()
+        img = np.transpose(img, (1, 2, 0))  # CHW to HWC
+        return img
+
+    elif backend == BackendTypes.TENSORFLOW:
+        img = tf.squeeze(tensor, axis=0).numpy()
+        # TF tensors default to HWC, so no transpose needed
+        return img
+
+    else:
+        raise ValueError(f"Unsupported backend: {backend}")
+
+
+def denormalize_image(img: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    img = (img * np.array(STD)) + np.array(MEAN)
+    img = np.clip(img, 0, 1)
+    return img
+
+
+def visualize_attack(
+    original: Union[torch.Tensor, tf.Tensor],
+    adversarial: Union[torch.Tensor, tf.Tensor],
+    noise: Union[torch.Tensor, tf.Tensor],
+    probs: np.ndarray[Any, Any],
+    predicted_class: str,
+    true_class: Optional[str] = None,
+    class_names: Optional[List[str]] = None,
+    backend: str = BackendTypes.PYTORCH,
+) -> None:
+    """
+    Visualize original image, adversarial image, noise, predicted probabilities, and class labels.
+
+    Args:
+        original: Original input tensor (batch size 1).
+        adversarial: Adversarial tensor (batch size 1).
+        noise: Noise tensor (batch size 1).
+        probs: 1D tensor/array of predicted probabilities.
+        predicted_class: Predicted class label string.
+        true_class: (Optional) true class label string.
+        class_names: (Optional) list of class names.
+        backend_name: Backend string ('pytorch' or 'tensorflow').
+    """
+
+    orig_img = tensor_to_numpy(original, backend)
+    adv_img = tensor_to_numpy(adversarial, backend)
+    noise_img = tensor_to_numpy(noise, backend)
+
+    orig_img = denormalize_image(orig_img)
+    adv_img = denormalize_image(adv_img)
+
+    noise_img = noise_img * 0.5 + 0.5  # scale noise to [0,1]
+
+    fig, axs = plt.subplots(1, 4, figsize=(18, 5))
+
+    axs[0].imshow(orig_img)
+    axs[0].set_title(f"Original Image\nTrue: {true_class or 'Unknown'}")
+    axs[0].axis("off")
+
+    axs[1].imshow(noise_img)
+    axs[1].set_title("Adversarial Noise")
+    axs[1].axis("off")
+
+    axs[2].imshow(adv_img)
+    axs[2].set_title(f"Adversarial Image\nPredicted: {predicted_class}")
+    axs[2].axis("off")
+
+    if class_names is None:
+        class_names = [str(i) for i in range(len(probs))]
+
+    topk = 5
+    topk_indices = np.argsort(probs)[-topk:][::-1]
+    topk_probs = probs[topk_indices]
+    topk_names = [class_names[i] for i in topk_indices]
+
+    axs[3].barh(topk_names[::-1], topk_probs[::-1])
+    axs[3].set_xlim(0, 1)
+    axs[3].set_title("Top Predicted Probabilities")
+
+    plt.tight_layout()
+    plt.show()
+
+
+def load_imagenet_classes() -> List[str]:
+    import urllib.request
+
+    url = "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
+    class_idx = []
+    with urllib.request.urlopen(url) as f:
+        for line in f:
+            class_idx.append(line.decode("utf-8").strip())
+    return class_idx
+
+
+def get_pred_probs(
+    model: Any, tensor: Union[torch.Tensor, tf.Tensor], backend: str
+) -> np.ndarray:
+    if backend == BackendTypes.PYTORCH:
+        with torch.no_grad():
+            output = model(tensor)
+            probs = F.softmax(output, dim=1)
+        return probs.squeeze(0).cpu().numpy()
+    elif backend == BackendTypes.TENSORFLOW:
+        outputs = model(tensor)
+        probs = tf.nn.softmax(outputs, axis=1)
+        return probs.numpy().squeeze(0)
+    else:
+        raise ValueError(f"Unsupported backend: {backend}")
