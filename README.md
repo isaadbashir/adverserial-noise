@@ -164,6 +164,7 @@ utils.visualize_attack(
     predicted_class="target_class",
     true_class="original_class"
 )
+```
 
 ## Future Directions
 
