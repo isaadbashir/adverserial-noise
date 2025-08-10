@@ -26,7 +26,6 @@ dev = [
 packages = ["adverserial_noise"]
 
 [tool.mypy]
-plugins = ["pydantic.mypy"]
 strict = true
 files = ["adverserial_noise", "test"]
 
