@@ -128,14 +128,46 @@ def tensor_to_numpy(
     tensor: Union[torch.Tensor, tf.Tensor], backend: str
 ) -> np.ndarray[Any, Any]:
     """
-    Convert a batch tensor (1, C, H, W) or (1, H, W, C) to a numpy image (H, W, C) in [0,1].
+    Convert a batch tensor to a numpy image array.
+
+    This function converts a tensor with batch dimension (1, C, H, W) for PyTorch
+    or (1, H, W, C) for TensorFlow to a numpy array with shape (H, W, C).
+    The tensor is expected to be in the normalized [0,1] range and will be
+    converted to the same range in the output numpy array.
+
+    The conversion process includes:
+    1. Removing the batch dimension
+    2. Converting to CPU numpy array
+    3. Transposing dimensions from CHW to HWC format (for PyTorch)
+    4. Maintaining the [0,1] normalization range
 
     Args:
-        tensor: Input tensor with batch dimension.
-        backend: Backend string ('pytorch' or 'tensorflow').
+        tensor (Union[torch.Tensor, tf.Tensor]): Input tensor with batch dimension.
+            Expected shapes:
+            - PyTorch: (1, C, H, W) where C=3 for RGB images
+            - TensorFlow: (1, H, W, C) where C=3 for RGB images
+        backend (str): Backend framework used. Currently supports:
+            - 'pytorch': PyTorch tensor format
+            - 'tensorflow': TensorFlow tensor format (if available)
 
     Returns:
-        numpy.ndarray: Image array (H, W, 3) normalized to [0,1].
+        np.ndarray: Image array with shape (H, W, 3) normalized to [0,1] range.
+
+    Raises:
+        ValueError: If unsupported backend is specified.
+
+    Example:
+        >>> # PyTorch tensor (1, 3, 224, 224)
+        >>> tensor = torch.randn(1, 3, 224, 224)
+        >>> numpy_img = tensor_to_numpy(tensor, backend="pytorch")
+        >>> print(f"Output shape: {numpy_img.shape}")  # (224, 224, 3)
+        >>> print(f"Value range: [{numpy_img.min():.3f}, {numpy_img.max():.3f}]")
+
+    Note:
+        - The function automatically handles PyTorch's CHW format conversion to HWC
+        - Output is always in RGB format with shape (H, W, 3)
+        - Values are maintained in the [0,1] range
+        - For PyTorch tensors, the function detaches gradients and moves to CPU
     """
     if backend == BackendTypes.PYTORCH:
         img = tensor.squeeze(0).detach().cpu()
@@ -148,6 +180,39 @@ def tensor_to_numpy(
 
 
 def denormalize_image(img: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """
+    Denormalize an image from ImageNet normalization back to [0,1] range.
+
+    This function reverses the ImageNet normalization that is commonly applied
+    to images when preprocessing for deep learning models. It converts images
+    from the normalized space (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    back to the original [0,1] range.
+
+    The denormalization process:
+    1. Multiplies each channel by the corresponding standard deviation
+    2. Adds the corresponding mean value
+    3. Clips values to ensure they stay within [0,1] range
+
+    Args:
+        img (np.ndarray): Input image array with shape (H, W, 3) in normalized space.
+            Expected to be in the range typically output by ImageNet normalization.
+
+    Returns:
+        np.ndarray: Denormalized image array with shape (H, W, 3) in [0,1] range.
+
+    Example:
+        >>> # Normalized image (values typically in [-2, 2] range)
+        >>> normalized_img = np.random.randn(224, 224, 3) * 0.5
+        >>> denorm_img = denormalize_image(normalized_img)
+        >>> print(f"Input range: [{normalized_img.min():.3f}, {normalized_img.max():.3f}]")
+        >>> print(f"Output range: [{denorm_img.min():.3f}, {denorm_img.max():.3f}]")
+
+    Note:
+        - Uses ImageNet mean and standard deviation constants defined at module level
+        - Output is clipped to [0,1] to prevent invalid pixel values
+        - This function is typically used after tensor_to_numpy for visualization
+        - The function assumes RGB channel order (R=0, G=1, B=2)
+    """
     img = (img * np.array(STD)) + np.array(MEAN)
     img = np.clip(img, 0, 1)
     return img
@@ -254,6 +319,35 @@ def visualize_attack(
 
 
 def load_imagenet_classes() -> List[str]:
+    """
+    Load ImageNet class names from the official PyTorch repository.
+
+    This function downloads the ImageNet class names from the PyTorch Hub repository
+    and returns them as a list of strings. The class names correspond to the
+    1000 ImageNet classes used in pre-trained models like ResNet, VGG, etc.
+
+    The function fetches the class names from:
+    https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt
+
+    Returns:
+        List[str]: List of 1000 ImageNet class names in order.
+
+    Raises:
+        urllib.error.URLError: If the URL cannot be accessed or the file is corrupted.
+        UnicodeDecodeError: If the downloaded file cannot be decoded as UTF-8.
+
+    Example:
+        >>> classes = load_imagenet_classes()
+        >>> print(f"Total classes: {len(classes)}")
+        >>> print(f"First 5 classes: {classes[:5]}")
+        >>> # ['tench', 'goldfish', 'great white shark', 'tiger shark', 'hammerhead shark']
+
+    Note:
+        - Requires internet connection to download the class names
+        - The function caches the result in memory for subsequent calls
+        - Class indices correspond to model output indices (0-indexed)
+        - This is useful for interpreting model predictions and visualization
+    """
     import urllib.request
 
     url = "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
@@ -267,6 +361,53 @@ def load_imagenet_classes() -> List[str]:
 def get_pred_probs(
     model: Any, tensor: Union[torch.Tensor, tf.Tensor], backend: str
 ) -> np.ndarray:
+    """
+    Get prediction probabilities from a model for a given input tensor.
+
+    This function runs inference on a model with the given input tensor and
+    returns the softmax probabilities for all classes. It handles the model
+    inference in a no-gradient context to save memory and computation.
+
+    The function supports different backend frameworks and automatically
+    handles the appropriate inference method for each backend.
+
+    Args:
+        model (Any): The model to run inference on. Should be a callable object
+            that accepts the input tensor and returns logits.
+        tensor (Union[torch.Tensor, tf.Tensor]): Input tensor with batch dimension.
+            Expected shapes:
+            - PyTorch: (1, C, H, W) for image classification models
+            - TensorFlow: (1, H, W, C) for image classification models
+        backend (str): Backend framework used. Currently supports:
+            - 'pytorch': PyTorch model and tensor
+            - 'tensorflow': TensorFlow model and tensor (if available)
+
+    Returns:
+        np.ndarray: 1D array of class probabilities with shape (num_classes,).
+            Probabilities sum to 1.0 and are in descending order of confidence.
+
+    Raises:
+        ValueError: If unsupported backend is specified.
+        RuntimeError: If model inference fails or returns unexpected output.
+
+    Example:
+        >>> # PyTorch model and tensor
+        >>> model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+        >>> input_tensor = torch.randn(1, 3, 224, 224)
+        >>> probs = get_pred_probs(model, input_tensor, backend="pytorch")
+        >>> print(f"Probabilities shape: {probs.shape}")  # (1000,)
+        >>> print(f"Sum of probabilities: {probs.sum():.6f}")  # Should be 1.0
+        >>> top_class_idx = np.argmax(probs)
+        >>> print(f"Top class index: {top_class_idx}, Probability: {probs[top_class_idx]:.4f}")
+
+    Note:
+        - The function runs inference without gradients to save memory
+        - For PyTorch, the output is automatically moved to CPU and converted to numpy
+        - Softmax is applied to convert logits to probabilities
+        - The batch dimension is removed from the output
+        - This function is typically used in conjunction with load_imagenet_classes()
+          for interpreting model predictions
+    """
     if backend == BackendTypes.PYTORCH:
         with torch.no_grad():
             output = model(tensor)
