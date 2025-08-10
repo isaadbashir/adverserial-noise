@@ -164,4 +164,17 @@ utils.visualize_attack(
     predicted_class="target_class",
     true_class="original_class"
 )
-```
+
+## Future Directions
+
+The following features are planned for future releases:
+
+- **TensorFlow Backend**: Add full TensorFlow support with optimized operations
+- **Additional Attack Methods**: Implement PGD (Projected Gradient Descent) and other advanced attacks
+- **Comprehensive Testing**: Add unit tests, integration tests, and performance benchmarks
+- **Enhanced Visualization**: Utilities for comparing different epsilon values and attack parameters
+- **PSNR Warning System**: Automatic warnings when epsilon values are too high to be visually imperceptible
+
+## Contributing
+
+Please feel free to submit issues, feature requests, or pull requests.
