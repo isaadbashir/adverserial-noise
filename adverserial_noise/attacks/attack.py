@@ -1,10 +1,8 @@
 from typing import Optional, Union, Any, Callable
 import torch
-import tensorflow as tf
 from dataclasses import dataclass
 
 from .base.pytorch_interface import PyTorchBackend
-from .base.tensorflow_interface import TensorFlowBackend
 from .fgsma_attack import FGSMAttack
 
 
@@ -54,20 +52,14 @@ class AdversarialAttack:
             return self.backend_name
         if isinstance(model, torch.nn.Module):
             return BackendTypes.PYTORCH
-        elif isinstance(model, (tf.Module, tf.keras.Model)):
-            return BackendTypes.TENSORFLOW
         else:
             raise ValueError(
                 "Cannot detect backend from model type. Please specify 'backend' explicitly."
             )
 
-    def _create_backend(
-        self, backend_name: str
-    ) -> Union[PyTorchBackend, TensorFlowBackend]:
+    def _create_backend(self, backend_name: str) -> Union[PyTorchBackend]:
         if backend_name == BackendTypes.PYTORCH:
             return PyTorchBackend()
-        elif backend_name == BackendTypes.TENSORFLOW:
-            return TensorFlowBackend()
         else:
             raise ValueError(f"Unknown backend '{backend_name}'")
 
@@ -77,7 +69,7 @@ class AdversarialAttack:
         inputs: Any,
         targets: Any,
         attack_type: str = AttackTypes.FGSM,
-        epsilon: float = 0.01,
+        epsilon: float = 0.03,
         loss_fn: Optional[Callable[..., Any]] = None,
         verbose: bool = False,
     ) -> Any:

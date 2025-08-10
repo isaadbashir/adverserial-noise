@@ -71,26 +71,6 @@ def image_to_tensor(
         tensor = transform(image).unsqueeze(0)  # add batch
         return tensor
 
-    elif backend == BackendTypes.TENSORFLOW:
-        # Convert PIL to TF tensor (H,W,C), float32 [0,255]
-        img = tf.keras.preprocessing.image.img_to_array(image)
-
-        # Resize using TF
-        img = tf.image.resize(img, size)
-
-        # Scale pixel values to [0,1]
-        img = img / 255.0
-
-        # Normalize using ImageNet mean/std
-        mean = tf.constant(MEAN, shape=(1, 1, 3), dtype=tf.float32)
-        std = tf.constant(STD, shape=(1, 1, 3), dtype=tf.float32)
-        img = (img - mean) / std
-
-        # Add batch dimension: (1, H, W, C)
-        img = tf.expand_dims(img, axis=0)
-
-        return img
-
     else:
         raise ValueError(f"Unsupported backend: {backend}")
 
@@ -112,11 +92,6 @@ def tensor_to_numpy(
         img = tensor.squeeze(0).detach().cpu()
         img = img.numpy()
         img = np.transpose(img, (1, 2, 0))  # CHW to HWC
-        return img
-
-    elif backend == BackendTypes.TENSORFLOW:
-        img = tf.squeeze(tensor, axis=0).numpy()
-        # TF tensors default to HWC, so no transpose needed
         return img
 
     else:
@@ -211,9 +186,6 @@ def get_pred_probs(
             output = model(tensor)
             probs = F.softmax(output, dim=1)
         return probs.squeeze(0).cpu().numpy()
-    elif backend == BackendTypes.TENSORFLOW:
-        outputs = model(tensor)
-        probs = tf.nn.softmax(outputs, axis=1)
-        return probs.numpy().squeeze(0)
+
     else:
         raise ValueError(f"Unsupported backend: {backend}")
