@@ -170,7 +170,7 @@ utils.visualize_attack(
 The following features are planned for future releases:
 
 - **TensorFlow Backend**: Add full TensorFlow support with optimized operations
-- **Additional Attack Methods**: Implement PGD (Projected Gradient Descent) and other advanced attacks
+- **Additional Attack Methods**: Implement other advanced attacks
 - **Comprehensive Testing**: Add unit tests, integration tests, and performance benchmarks
 - **Enhanced Visualization**: Utilities for comparing different epsilon values and attack parameters
 - **PSNR Warning System**: Automatic warnings when epsilon values are too high to be visually imperceptible
