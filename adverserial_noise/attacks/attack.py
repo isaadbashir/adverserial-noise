@@ -33,6 +33,8 @@ from dataclasses import dataclass
 
 from .base.pytorch_interface import PyTorchBackend
 from .fgsma_attack import FGSMAttack
+from .pgd_attack import PGDAttack
+from .attack_interface import AdversarialAttackBase
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ class AttackTypes:
 
     Attributes:
         FGSM (str): Fast Gradient Sign Method attack identifier.
+        PGD (str): Projected Gradient Descent attack identifier.
 
     Example:
         >>> # Check if an attack type is supported
@@ -101,6 +104,7 @@ class AttackTypes:
     """
 
     FGSM: str = "fgsm"
+    PGD: str = "pgd"
 
     @classmethod
     def values(cls) -> set[str]:
@@ -114,7 +118,7 @@ class AttackTypes:
             >>> attacks = AttackTypes.values()
             >>> print(attacks)  # {'fgsm'}
         """
-        return {cls.FGSM}
+        return {cls.FGSM, cls.PGD}
 
 
 # Global constants for easy access
@@ -266,10 +270,11 @@ class AdversarialAttack:
         model: Any,
         inputs: Any,
         targets: Any,
-        attack_type: str = AttackTypes.FGSM,
+        attack_type: str,
         epsilon: float = 0.03,
         loss_fn: Optional[Callable[..., Any]] = None,
         verbose: bool = False,
+        **kwargs: Any,
     ) -> Any:
         """
         Run the specified adversarial attack on inputs.
@@ -300,6 +305,9 @@ class AdversarialAttack:
             verbose (bool, optional): Enable verbose logging during attack execution.
                 Provides detailed information about attack progress and parameters.
                 Defaults to False.
+            **kwargs: Additional attack-specific parameters:
+                - For PGD attacks: step_size, num_iterations, random_start
+                - For FGSM attacks: no additional parameters needed
 
         Returns:
             Any: Adversarial examples with the same shape and type as the inputs.
@@ -318,6 +326,18 @@ class AdversarialAttack:
             >>>     inputs=image_batch,
             >>>     targets=labels,
             >>>     epsilon=0.05
+            >>> )
+            >>>
+            >>> # PGD attack with custom parameters
+            >>> adversarial_inputs = interface.run_attack(
+            >>>     model=model,
+            >>>     inputs=inputs,
+            >>>     targets=targets,
+            >>>     attack_type="pgd",
+            >>>     epsilon=0.1,
+            >>>     step_size=0.01,
+            >>>     num_iterations=40,
+            >>>     random_start=True
             >>> )
             >>>
             >>> # Custom loss function with verbose logging
@@ -345,6 +365,8 @@ class AdversarialAttack:
         backend_name = self._detect_backend(model)
         backend = self._create_backend(backend_name)
 
+        attack: AdversarialAttackBase = None  # type: ignore
+
         attack_type = attack_type.lower()
         if attack_type not in SUPPORTED_ATTACKS:
             raise ValueError(
@@ -353,6 +375,21 @@ class AdversarialAttack:
 
         if attack_type == AttackTypes.FGSM:
             attack = FGSMAttack(backend, epsilon, loss_fn=loss_fn, verbose=verbose)
+        elif attack_type == AttackTypes.PGD:
+            # Extract PGD-specific parameters from kwargs with defaults
+            step_size = kwargs.get("step_size", 0.01)
+            num_iterations = kwargs.get("num_iterations", 40)
+            random_start = kwargs.get("random_start", True)
+
+            attack = PGDAttack(
+                backend,
+                epsilon,
+                step_size=step_size,
+                num_iterations=num_iterations,
+                loss_fn=loss_fn,
+                verbose=verbose,
+                random_start=random_start,
+            )
         else:
             raise ValueError(f"Unsupported attack type: {attack_type}")
 

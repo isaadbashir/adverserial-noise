@@ -105,6 +105,10 @@ class BackendInterface(ABC):
         pass
 
     @abstractmethod
+    def uniform(self, shape: tuple[int, ...], low: float, high: float) -> Any:
+        pass
+
+    @abstractmethod
     def gather(self, outputs: Any, targets: Any) -> Any:
         pass
 
