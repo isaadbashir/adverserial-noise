@@ -40,6 +40,7 @@ class PyTorchBackend(BackendInterface):
         return torch.tensor(data)
 
     def requires_grad(self, tensor: torch.Tensor) -> torch.Tensor:
+        tensor = tensor.detach()
         tensor.requires_grad = True
         return tensor
 
@@ -48,6 +49,9 @@ class PyTorchBackend(BackendInterface):
 
     def backward(self, loss: torch.Tensor) -> None:
         loss.backward()
+
+    def uniform(self, shape: tuple[int, ...], low: float, high: float) -> torch.Tensor:
+        return torch.rand(shape) * (high - low) + low
 
     def clamp(
         self, tensor: torch.Tensor, min_val: float, max_val: float
