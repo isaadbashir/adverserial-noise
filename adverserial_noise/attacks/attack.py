@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from .base.pytorch_interface import PyTorchBackend
 from .fgsma_attack import FGSMAttack
 from .pgd_attack import PGDAttack
-from attack_interface import AdversarialAttackBase
+from .attack_interface import AdversarialAttackBase
 
 
 @dataclass(frozen=True)
@@ -365,7 +365,7 @@ class AdversarialAttack:
         backend_name = self._detect_backend(model)
         backend = self._create_backend(backend_name)
 
-        attack: AdversarialAttackBase = None
+        attack: AdversarialAttackBase = None  # type: ignore
 
         attack_type = attack_type.lower()
         if attack_type not in SUPPORTED_ATTACKS:
